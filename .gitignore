@@ -1,0 +1,17 @@
+# CMake / Ninja build trees
+build/
+build-*/
+cmake-build-*/
+
+# Android / Gradle
+.gradle/
+local.properties
+.cxx/
+*.apk
+*.aab
+*.iml
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

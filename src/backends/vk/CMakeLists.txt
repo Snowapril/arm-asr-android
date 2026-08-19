@@ -1,5 +1,5 @@
 # Copyright  © 2023 Advanced Micro Devices, Inc.
-# Copyright  © 2024-2025 Arm Limited.
+# Copyright  © 2024-2026 Arm Limited.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -143,12 +143,8 @@ include_directories(${FFXM_SRC_BACKENDS_PATH}/shared)
 include_directories(${FFXM_SRC_BACKENDS_PATH}/vk)
 include_directories(${FFXM_GPU_PATH})
 include_directories(${FFXM_COMPONENTS_PATH})
-include_directories("../../../../")
-include_directories("../../../../Khronos")
 
-if(NOT MSVC)
-	add_compile_options(-std=c++20)
-else()
+if(MSVC)
 	add_compile_options(
 		/std:c++20
 		/Zc:strictStrings-
@@ -157,44 +153,68 @@ else()
 		/wd4456
 		/wd4127
 		/wd4457)
+else()
+	add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
 endif()
 
 add_library(Arm_ASR_backend STATIC ${PRIVATE_SOURCE} ${PUBLIC_SOURCE} ${PRIVATE_SHADERS} ${PUBLIC_SHADERS})
 
-if(NOT DEFINED FFXM_VOLK_PATH)
-  set(FFXM_VOLK_PATH "" CACHE STRING "Path to Volk")
-endif()
-include_directories(${FFXM_VOLK_PATH})
+target_compile_features(Arm_ASR_backend PUBLIC cxx_std_20)
 
 if(NOT DEFINED FFXM_VULKAN_PATH)
   set(FFXM_VULKAN_PATH "" CACHE STRING "Path to Vulkan")
 endif()
 include_directories(${FFXM_VULKAN_PATH})
 
-# Add some defines
-target_compile_definitions(Arm_ASR_backend PUBLIC FFXM_VKLOADER_VOLK=1)
+if(FFXM_VKLOADER_VOLK)
+	if(NOT DEFINED FFXM_VOLK_PATH)
+	  set(FFXM_VOLK_PATH "" CACHE STRING "Path to Volk")
+	endif()
+	include_directories(${FFXM_VOLK_PATH})
+	# Layout used by host projects that vendor Khronos headers next to this tree.
+	include_directories("../../../../")
+	include_directories("../../../../Khronos")
+	target_compile_definitions(Arm_ASR_backend PUBLIC FFXM_VKLOADER_VOLK=1)
+endif()
 
-get_filename_component(FFXM_PASS_SHADER_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR}/../shaders/vk ABSOLUTE)
-include_directories(${FFXM_PASS_SHADER_OUTPUT_PATH})
+if(ANDROID)
+	# The NDK sysroot provides both the Vulkan headers and libvulkan.so, and
+	# ffxmAssertReport() reports through logcat.
+	target_link_libraries(Arm_ASR_backend PUBLIC vulkan log)
+endif()
 
 set_source_files_properties(${PRIVATE_SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 set_source_files_properties(${PUBLIC_SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 
-file(MAKE_DIRECTORY ${FFXM_PASS_SHADER_OUTPUT_PATH})
-
-set(FFXM_SC_DEPENDENT_TARGET ffxm_backend_hlsl_shaders)
-add_custom_target(${FFXM_SC_DEPENDENT_TARGET})
-
-if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20.0")
-	cmake_policy(SET CMP0116 OLD)
-endif()
-
-# add pass shaders for all the components
 target_compile_definitions(Arm_ASR_backend PRIVATE FFXM_FSR)
-include (CMakeShadersFSR2.txt)
 
-add_custom_target(ffxm_shader_permutations_vk DEPENDS ${FFXM_SC_PERMUTATION_OUTPUTS})
-add_dependencies(${FFXM_SC_DEPENDENT_TARGET} ffxm_shader_permutations_vk)
+if(FFXM_USE_PREBUILT_SHADERS)
 
-# Make sure shader builds are a dependency of the backend
-add_dependencies(Arm_ASR_backend ffxm_shader_permutations_vk)
+	# The blob accessors include the *_permutations.h headers with angle brackets,
+	# so pointing at the checked-in blobs is a drop-in swap for the generated ones.
+	include_directories(${FFXM_PREBUILT_SHADERS_PATH})
+
+else()
+
+	get_filename_component(FFXM_PASS_SHADER_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR}/../shaders/vk ABSOLUTE)
+	include_directories(${FFXM_PASS_SHADER_OUTPUT_PATH})
+
+	file(MAKE_DIRECTORY ${FFXM_PASS_SHADER_OUTPUT_PATH})
+
+	set(FFXM_SC_DEPENDENT_TARGET ffxm_backend_hlsl_shaders)
+	add_custom_target(${FFXM_SC_DEPENDENT_TARGET})
+
+	if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20.0")
+		cmake_policy(SET CMP0116 OLD)
+	endif()
+
+	# add pass shaders for all the components
+	include (CMakeShadersFSR2.txt)
+
+	add_custom_target(ffxm_shader_permutations_vk DEPENDS ${FFXM_SC_PERMUTATION_OUTPUTS})
+	add_dependencies(${FFXM_SC_DEPENDENT_TARGET} ffxm_shader_permutations_vk)
+
+	# Make sure shader builds are a dependency of the backend
+	add_dependencies(Arm_ASR_backend ffxm_shader_permutations_vk)
+
+endif()
