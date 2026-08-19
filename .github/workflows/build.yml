@@ -1,0 +1,113 @@
+# Copyright © 2026 Arm Limited.
+# SPDX-License-Identifier: MIT
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  NDK_VERSION: 29.0.14206865
+  VULKAN_HEADERS_TAG: v1.3.275
+
+jobs:
+  android:
+    name: Android (${{ matrix.abi }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NDK r29
+        run: |
+          set -eux
+          # r29 is an rc, so it lives on the beta channel.
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=1 \
+            "ndk;${NDK_VERSION}" "platforms;android-35" > /dev/null
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-35 \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p out/${{ matrix.abi }}
+          cp build/libArm_ASR_api.a out/${{ matrix.abi }}/
+          cp build/src/backends/vk/libArm_ASR_backend.a out/${{ matrix.abi }}/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ matrix.abi }}
+          path: out/${{ matrix.abi }}
+
+  windows:
+    name: Windows x64 (MSVC)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The backend is a static library, so Vulkan headers are enough - there is
+      # nothing to link against at this stage.
+      - name: Fetch Vulkan headers
+        run: git clone --depth 1 --branch ${{ env.VULKAN_HEADERS_TAG }} https://github.com/KhronosGroup/Vulkan-Headers.git
+
+      # Release artifacts use the prebuilt SPIR-V so that every platform ships
+      # byte-identical shader blobs.
+      - name: Configure (prebuilt shaders)
+        run: >
+          cmake -B build -A x64
+          -DFFXM_REMOVE_ARM_ASR_VK_STANDALONE_BACKEND=OFF
+          -DFFXM_USE_PREBUILT_SHADERS=ON
+          -DFFXM_VKLOADER_VOLK=OFF
+          -DFFXM_VULKAN_PATH="${{ github.workspace }}/Vulkan-Headers/include"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          mkdir -p out/windows-x64
+          find build -name "Arm_ASR_api.lib" -exec cp {} out/windows-x64/ \;
+          find build -name "Arm_ASR_backend.lib" -exec cp {} out/windows-x64/ \;
+          ls -la out/windows-x64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: out/windows-x64
+
+  # Non-blocking: proves the Windows-only FidelityFX_SC.exe shader pipeline still
+  # works after the CMake restructuring. It cannot run on any other host.
+  windows-shader-compiler:
+    name: Windows shader compiler path
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Vulkan headers
+        run: git clone --depth 1 --branch ${{ env.VULKAN_HEADERS_TAG }} https://github.com/KhronosGroup/Vulkan-Headers.git
+      - name: Configure (compile shaders with FidelityFX_SC.exe)
+        run: >
+          cmake -B build-sc -A x64
+          -DFFXM_REMOVE_ARM_ASR_VK_STANDALONE_BACKEND=OFF
+          -DFFXM_USE_PREBUILT_SHADERS=OFF
+          -DFFXM_VKLOADER_VOLK=OFF
+          -DFFXM_VULKAN_PATH="${{ github.workspace }}/Vulkan-Headers/include"
+      - name: Build
+        run: cmake --build build-sc --config Release

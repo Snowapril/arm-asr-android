@@ -1,7 +1,16 @@
-<!-- Copyright © 2024-2025 Arm Limited.
+<!-- Copyright © 2024-2026 Arm Limited.
 SPDX-License-Identifier: MIT -->
 
 ![Arm ASR Logo](res/logo.png)
+
+> **Unofficial fork.** This is a personal fork of
+> [arm/accuracy-super-resolution-generic-library](https://github.com/arm/accuracy-super-resolution-generic-library)
+> that adds Android and Vulkan build support (NDK r29, API 35) together with a
+> Gradle sample application. It is **not affiliated with, endorsed by, or
+> supported by Arm Limited**. For the official releases, please use the upstream
+> repository. See [Building for Android](#building-for-android) for what this
+> fork adds, and `CLAUDE.md` for notes on working in this tree.
+
 
 # Arm® Accuracy Super Resolution™ (Arm ASR) Generic Library
 
@@ -26,6 +35,7 @@ SPDX-License-Identifier: MIT -->
     - [Frame Time Delta Input](#frame-time-delta-input)
     - [HDR support](#hdr-support)
     - [API Debug Checker](#debug-checker)
+- [Building for Android](#building-for-android)
 - [Extended ffx_shader_compiler](#extended-ffx_shader_compiler)
 - [Generate prebuilt shaders](#generate-prebuilt-shaders)
 - [Targeting OpenGL® ES 3.2](#targeting-opengl-es-32)
@@ -305,6 +315,48 @@ Most of the workloads in the upscalers have been converted to Fragment Shaders. 
 ## Generate prebuilt shaders
 
 We provide a helper script to generate prebuilt shaders which are used for standalone backend, you can just run [`generate_prebuilt_shaders.py`](./tools/generate_prebuilt_shaders.py), and output path is **src/backends/shared/blob_accessors/prebuilt_shaders**.
+
+Note that regenerating the shaders **requires a Windows host**: the compiler binaries under [`tools/bin`](./tools/bin) (`FidelityFX_SC.exe`, `dxcompiler.dll` and `glslangValidator.exe`) are Windows x86-64 executables. On macOS and Linux the build consumes the prebuilt blobs that are already checked in, which is what `FFXM_USE_PREBUILT_SHADERS` selects (see [Building for Android](#building-for-android)).
+
+## Building for Android
+
+Arm ASR builds for Android with the NDK's CMake toolchain. The Android defaults enable the standalone Vulkan backend, consume the checked-in prebuilt SPIR-V, and link the NDK's `libvulkan.so` directly, so no extra options are required:
+
+```sh
+cmake -B build/android-arm64 -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-35
+cmake --build build/android-arm64
+```
+
+This produces `libArm_ASR_api.a` and `libArm_ASR_backend.a`. Link both, as described in [Quick integration](#quick-integration).
+
+### Prerequisites
+
+- Android NDK **r29** (`29.0.14206865`), targeting **API level 35**
+- CMake 3.22 or newer
+
+### Build options
+
+| Option | Default | Meaning |
+|---|---|---|
+| `FFXM_REMOVE_ARM_ASR_VK_STANDALONE_BACKEND` | `ON`, `OFF` on Android | Compiles the standalone Vulkan backend away |
+| `FFXM_USE_PREBUILT_SHADERS` | `ON` on non-Windows hosts | Use the checked-in SPIR-V blobs instead of invoking the Windows-only shader compiler |
+| `FFXM_VKLOADER_VOLK` | `ON`, `OFF` on Android | Resolve Vulkan entry points through volk instead of linking the loader directly |
+
+### Device requirements
+
+The prebuilt shader blobs are **SPIR-V 1.4 compiled with explicit 16-bit types**, and there is no fp32 permutation set. A device must therefore support:
+
+- Vulkan 1.2, or Vulkan 1.1 with [`VK_KHR_spirv_1_4`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_spirv_1_4.html)
+- [`VK_KHR_shader_float16_int8`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_float16_int8.html) with `shaderFloat16`
+- 16-bit storage
+
+`arm64-v8a` is the supported ABI. `x86_64` builds for emulator and CI coverage, but SwiftShader does not advertise `shaderFloat16`. `armeabi-v7a` compiles but is untested on device.
+
+### Sample application
+
+[`samples/android`](./samples/android) is a Gradle/NativeActivity Vulkan app that renders a procedural scene at reduced resolution and upscales it with Arm ASR. See its [README](./samples/android/README.md) for build and run instructions.
 
 ## Targeting OpenGL ES 3.2
 
