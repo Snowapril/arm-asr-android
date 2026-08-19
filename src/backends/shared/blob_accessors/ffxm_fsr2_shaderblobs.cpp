@@ -1,5 +1,5 @@
 // Copyright  © 2023 Advanced Micro Devices, Inc.
-// Copyright  © 2024-2025 Arm Limited.
+// Copyright  © 2024-2026 Arm Limited.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -216,7 +216,9 @@ FfxmErrorCode fsr2GetPermutationBlobByIndex(
     }
 
     // return an empty blob
-    memset(&outBlob, 0, sizeof(FfxmShaderBlob));
+    // (outBlob is the destination, not &outBlob: taking the address of the
+    //  parameter would memset sizeof(FfxmShaderBlob) bytes over the stack.)
+    memset(outBlob, 0, sizeof(FfxmShaderBlob));
     return FFXM_OK;
 }
 

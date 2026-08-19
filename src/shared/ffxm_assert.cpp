@@ -1,5 +1,5 @@
 // Copyright  © 2023 Advanced Micro Devices, Inc.
-// Copyright  © 2024-2025 Arm Limited.
+// Copyright  © 2024-2026 Arm Limited.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,18 @@
 #endif
 #include <windows.h>  // required for OutputDebugString()
 #include <stdio.h>    // required for sprintf_s
+#elif defined(__ANDROID__)
+#include <android/log.h>  // required for __android_log_print()
+#include <stdio.h>        // required for snprintf
+#else
+#include <stdio.h>        // required for snprintf
 #endif                // #ifndef _WIN32
+
+#if defined(__ANDROID__)
+#ifndef FFXM_ANDROID_LOG_TAG
+#define FFXM_ANDROID_LOG_TAG "ArmASR"
+#endif
+#endif
 
 namespace arm
 {
@@ -75,9 +86,30 @@ bool ffxmAssertReport(const char* file, int32_t line, const char* condition, con
     free(tempBuf);
 
 #else
-    FFXM_UNUSED(line);
-    FFXM_UNUSED(condition);
-    FFXM_UNUSED(message);
+    // form the final assertion string and route it somewhere visible.
+    const char*  text       = message ? message : condition;
+    const size_t bufferSize = (size_t)snprintf(NULL, 0, "%s(%d): ASSERTION FAILED. %s\n", file, line, text) + 1;
+    char*        tempBuf    = (char*)malloc(bufferSize);
+    if (!tempBuf) {
+
+        return true;
+    }
+
+    snprintf(tempBuf, bufferSize, "%s(%d): ASSERTION FAILED. %s\n", file, line, text);
+
+    if (!s_assertCallback) {
+#if defined(__ANDROID__)
+        // stderr is discarded on Android, so go through logcat instead.
+        __android_log_print(ANDROID_LOG_ERROR, FFXM_ANDROID_LOG_TAG, "%s", tempBuf);
+#else
+        fputs(tempBuf, stderr);
+#endif
+    } else {
+        s_assertCallback(tempBuf);
+    }
+
+    // free the buffer.
+    free(tempBuf);
 #endif
 
     return true;

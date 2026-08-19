@@ -1,5 +1,5 @@
 // Copyright  © 2023 Advanced Micro Devices, Inc.
-// Copyright  © 2024-2025 Arm Limited.
+// Copyright  © 2024-2026 Arm Limited.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -49,6 +49,15 @@ extern "C" {
 /// @ingroup Asserts
 #define FFXM_DEBUG_BREAK __debugbreak();
 #endif
+#elif defined(DISABLE_FFXM_DEBUG_BREAK)
+#define FFXM_DEBUG_BREAK \
+    {                   \
+    }
+#elif defined(__clang__) || defined(__GNUC__)
+/// Macro to force the debugger to break at this point in the code.
+///
+/// @ingroup Asserts
+#define FFXM_DEBUG_BREAK __builtin_trap();
 #else
 #define FFXM_DEBUG_BREAK \
     {                   \

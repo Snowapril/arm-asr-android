@@ -1,5 +1,5 @@
 // Copyright  © 2023 Advanced Micro Devices, Inc.
-// Copyright  © 2024-2025 Arm Limited.
+// Copyright  © 2024-2026 Arm Limited.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,13 +27,15 @@
 #pragma once
 
 #ifdef FFXM_VKLOADER_VOLK
-#if defined(__linux__)
+// __ANDROID__ must be tested before __linux__: the NDK defines both, and Android
+// has no XCB/Xlib surfaces.
+#if defined(__ANDROID__)
+#	define VK_USE_PLATFORM_ANDROID_KHR 1
+#elif defined(__linux__)
 #	define VK_USE_PLATFORM_XCB_KHR 1
 #	define VK_USE_PLATFORM_XLIB_KHR 1
 #elif defined(_WIN32)
 #	define VK_USE_PLATFORM_WIN32_KHR 1
-#elif defined(__ANDROID__)
-#	define VK_USE_PLATFORM_ANDROID_KHR 1
 #else
 #	error Not implemented
 #endif

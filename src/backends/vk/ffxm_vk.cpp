@@ -1,5 +1,5 @@
 // Copyright  © 2023 Advanced Micro Devices, Inc.
-// Copyright  © 2024-2025 Arm Limited.
+// Copyright  © 2024-2026 Arm Limited.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,15 +24,42 @@
 #include <host/ffxm_assert.h>
 #include <host/backends/vk/ffxm_vk.h>
 #include <ffxm_shader_blobs.h>
-#include <codecvt>
 #include <string.h>
 #include <math.h>
 #include <array>
 #include <ffxm_hash.h>
-#include <locale>
+#include <wchar.h>
 
 namespace arm
 {
+
+// Reflection names and pipeline names handled by this backend are always ASCII.
+// Widening/narrowing them byte-wise is exact for that input and keeps the
+// backend free of <codecvt> (deprecated in C++17, removed in C++26) and of
+// the MSVC-only Annex-K string conversions. It also sidesteps the
+// wchar_t size difference between Windows (2 bytes) and Android/Linux (4).
+template <size_t N>
+static void ffxmWidenAscii(wchar_t (&dst)[N], const char* src)
+{
+    size_t i = 0;
+    if (src) {
+        for (; i < N - 1 && src[i] != '\0'; ++i)
+            dst[i] = static_cast<wchar_t>(static_cast<unsigned char>(src[i]));
+    }
+    dst[i] = L'\0';
+}
+
+template <size_t N>
+static void ffxmNarrowAscii(char (&dst)[N], const wchar_t* src)
+{
+    size_t i = 0;
+    if (src) {
+        for (; i < N - 1 && src[i] != L'\0'; ++i)
+            dst[i] = (src[i] > 0 && src[i] < 128) ? static_cast<char>(src[i]) : '?';
+    }
+    dst[i] = '\0';
+}
+
 
 // prototypes for functions in the interface
 FfxmUInt32              GetSDKVersionVK(FfxmInterface* backendInterface);
@@ -223,7 +250,7 @@ typedef struct BackendContext_VK {
     } VkResourceView;
     VkResourceView*         pResourceViews;
 
-    VkDeviceMemory          ringBufferMemory = nullptr;
+    VkDeviceMemory          ringBufferMemory = VK_NULL_HANDLE;
     VkMemoryPropertyFlags   ringBufferMemoryProperties = 0;
     UniformBuffer*          pRingBuffer;
     FfxmUInt32                ringBufferBase = 0;
@@ -1360,9 +1387,7 @@ FfxmErrorCode CreateResourceVK(
     backendResource->currentState = resourceState;
 
 #ifdef _DEBUG
-    size_t retval = 0;
-    wcstombs_s(&retval, backendResource->resourceName, sizeof(backendResource->resourceName), createResourceDescription->name, sizeof(backendResource->resourceName));
-    if (retval >= 64) backendResource->resourceName[63] = '\0';
+    ffxmNarrowAscii(backendResource->resourceName, createResourceDescription->name);
 #endif
 
     VkMemoryRequirements memRequirements = {};
@@ -1744,9 +1769,7 @@ FfxmErrorCode RegisterResourceVK(
     copyResourceState(backendResource, inFfxmResource);
 
 #ifdef _DEBUG
-    size_t retval = 0;
-    wcstombs_s(&retval, backendResource->resourceName, sizeof(backendResource->resourceName), inFfxmResource->name, sizeof(backendResource->resourceName));
-    if (retval >= 64) backendResource->resourceName[63] = '\0';
+    ffxmNarrowAscii(backendResource->resourceName, inFfxmResource->name);
 #endif
 
     // the first call of RegisterResource can be identified because
@@ -2167,41 +2190,40 @@ FfxmErrorCode CreateComputePipelineVK(FfxmInterface* backendInterface,
 
     outPipeline->descriptorSetCount = numDescriptorSets;
 
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
     for (FfxmUInt32 srvIndex = 0; srvIndex < outPipeline->srvTextureCount; ++srvIndex)
     {
         outPipeline->srvTextureBindings[srvIndex].slotIndex = shaderBlob.boundSRVTextures[srvIndex];
         outPipeline->srvTextureBindings[srvIndex].bindCount = shaderBlob.boundSRVTextureCounts[srvIndex];
         outPipeline->srvTextureBindings[srvIndex].bindSet = shaderBlob.boundSRVTextureSets[srvIndex];
-        wcscpy(outPipeline->srvTextureBindings[srvIndex].name, converter.from_bytes(shaderBlob.boundSRVTextureNames[srvIndex]).c_str());
+        ffxmWidenAscii(outPipeline->srvTextureBindings[srvIndex].name, shaderBlob.boundSRVTextureNames[srvIndex]);
     }
     for (FfxmUInt32 srvIndex = 0; srvIndex < outPipeline->srvBufferCount; ++srvIndex)
     {
         outPipeline->srvBufferBindings[srvIndex].slotIndex = shaderBlob.boundSRVBuffers[srvIndex];
         outPipeline->srvBufferBindings[srvIndex].bindCount = shaderBlob.boundSRVBufferCounts[srvIndex];
         outPipeline->srvBufferBindings[srvIndex].bindSet = shaderBlob.boundSRVBufferSets[srvIndex];
-        wcscpy(outPipeline->srvBufferBindings[srvIndex].name, converter.from_bytes(shaderBlob.boundSRVBufferNames[srvIndex]).c_str());
+        ffxmWidenAscii(outPipeline->srvBufferBindings[srvIndex].name, shaderBlob.boundSRVBufferNames[srvIndex]);
     }
     for (FfxmUInt32 uavIndex = 0; uavIndex < outPipeline->uavTextureCount; ++uavIndex)
     {
         outPipeline->uavTextureBindings[uavIndex].slotIndex = shaderBlob.boundUAVTextures[uavIndex];
         outPipeline->uavTextureBindings[uavIndex].bindCount = shaderBlob.boundUAVTextureCounts[uavIndex];
         outPipeline->uavTextureBindings[uavIndex].bindSet = shaderBlob.boundUAVTextureSets[uavIndex];
-        wcscpy(outPipeline->uavTextureBindings[uavIndex].name, converter.from_bytes(shaderBlob.boundUAVTextureNames[uavIndex]).c_str());
+        ffxmWidenAscii(outPipeline->uavTextureBindings[uavIndex].name, shaderBlob.boundUAVTextureNames[uavIndex]);
     }
     for (FfxmUInt32 uavIndex = 0; uavIndex < outPipeline->uavBufferCount; ++uavIndex)
     {
         outPipeline->uavBufferBindings[uavIndex].slotIndex = shaderBlob.boundUAVBuffers[uavIndex];
         outPipeline->uavBufferBindings[uavIndex].bindCount = shaderBlob.boundUAVBufferCounts[uavIndex];
         outPipeline->uavBufferBindings[uavIndex].bindSet = shaderBlob.boundUAVBufferSets[uavIndex];
-        wcscpy(outPipeline->uavBufferBindings[uavIndex].name, converter.from_bytes(shaderBlob.boundUAVBufferNames[uavIndex]).c_str());
+        ffxmWidenAscii(outPipeline->uavBufferBindings[uavIndex].name, shaderBlob.boundUAVBufferNames[uavIndex]);
     }
     for (FfxmUInt32 cbIndex = 0; cbIndex < outPipeline->constCount; ++cbIndex)
     {
         outPipeline->constantBufferBindings[cbIndex].slotIndex = shaderBlob.boundConstantBuffers[cbIndex];
         outPipeline->constantBufferBindings[cbIndex].bindCount = shaderBlob.boundConstantBufferCounts[cbIndex];
         outPipeline->constantBufferBindings[cbIndex].bindSet = shaderBlob.boundConstantBufferSets[cbIndex];
-        wcscpy(outPipeline->constantBufferBindings[cbIndex].name, converter.from_bytes(shaderBlob.boundConstantBufferNames[cbIndex]).c_str());
+        ffxmWidenAscii(outPipeline->constantBufferBindings[cbIndex].name, shaderBlob.boundConstantBufferNames[cbIndex]);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -2245,7 +2267,7 @@ FfxmErrorCode CreateComputePipelineVK(FfxmInterface* backendInterface,
     pipelineCreateInfo.layout = pPipelineLayout->pipelineLayout;
 
     VkPipeline computePipeline = VK_NULL_HANDLE;
-    if (backendContext->vkFunctionTable.vkCreateComputePipelines(backendContext->device, nullptr, 1, &pipelineCreateInfo, nullptr, &computePipeline) != VK_SUCCESS) {
+    if (backendContext->vkFunctionTable.vkCreateComputePipelines(backendContext->device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &computePipeline) != VK_SUCCESS) {
         return FFXM_ERROR_BACKEND_API_ERROR;
     }
 
@@ -2476,46 +2498,45 @@ FfxmErrorCode CreateGraphicsPipelineVK(FfxmInterface* backendInterface,
 
     outPipeline->descriptorSetCount = numDescriptorSets;
 
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
     for (FfxmUInt32 srvIndex = 0; srvIndex < outPipeline->srvTextureCount; ++srvIndex)
     {
         outPipeline->srvTextureBindings[srvIndex].slotIndex = shaderBlob.boundSRVTextures[srvIndex];
         outPipeline->srvTextureBindings[srvIndex].bindCount = shaderBlob.boundSRVTextureCounts[srvIndex];
         outPipeline->srvTextureBindings[srvIndex].bindSet = shaderBlob.boundSRVTextureSets[srvIndex];
-        wcscpy(outPipeline->srvTextureBindings[srvIndex].name, converter.from_bytes(shaderBlob.boundSRVTextureNames[srvIndex]).c_str());
+        ffxmWidenAscii(outPipeline->srvTextureBindings[srvIndex].name, shaderBlob.boundSRVTextureNames[srvIndex]);
     }
     for (FfxmUInt32 srvIndex = 0; srvIndex < outPipeline->srvBufferCount; ++srvIndex)
     {
         outPipeline->srvBufferBindings[srvIndex].slotIndex = shaderBlob.boundSRVBuffers[srvIndex];
         outPipeline->srvBufferBindings[srvIndex].bindCount = shaderBlob.boundSRVBufferCounts[srvIndex];
         outPipeline->srvBufferBindings[srvIndex].bindSet = shaderBlob.boundSRVBufferSets[srvIndex];
-        wcscpy(outPipeline->srvBufferBindings[srvIndex].name, converter.from_bytes(shaderBlob.boundSRVBufferNames[srvIndex]).c_str());
+        ffxmWidenAscii(outPipeline->srvBufferBindings[srvIndex].name, shaderBlob.boundSRVBufferNames[srvIndex]);
     }
     for (FfxmUInt32 uavIndex = 0; uavIndex < outPipeline->uavTextureCount; ++uavIndex)
     {
         outPipeline->uavTextureBindings[uavIndex].slotIndex = shaderBlob.boundUAVTextures[uavIndex];
         outPipeline->uavTextureBindings[uavIndex].bindCount = shaderBlob.boundUAVTextureCounts[uavIndex];
         outPipeline->uavTextureBindings[uavIndex].bindSet = shaderBlob.boundUAVTextureSets[uavIndex];
-        wcscpy(outPipeline->uavTextureBindings[uavIndex].name, converter.from_bytes(shaderBlob.boundUAVTextureNames[uavIndex]).c_str());
+        ffxmWidenAscii(outPipeline->uavTextureBindings[uavIndex].name, shaderBlob.boundUAVTextureNames[uavIndex]);
     }
     for (FfxmUInt32 uavIndex = 0; uavIndex < outPipeline->uavBufferCount; ++uavIndex)
     {
         outPipeline->uavBufferBindings[uavIndex].slotIndex = shaderBlob.boundUAVBuffers[uavIndex];
         outPipeline->uavBufferBindings[uavIndex].bindCount = shaderBlob.boundUAVBufferCounts[uavIndex];
         outPipeline->uavBufferBindings[uavIndex].bindSet = shaderBlob.boundUAVBufferSets[uavIndex];
-        wcscpy(outPipeline->uavBufferBindings[uavIndex].name, converter.from_bytes(shaderBlob.boundUAVBufferNames[uavIndex]).c_str());
+        ffxmWidenAscii(outPipeline->uavBufferBindings[uavIndex].name, shaderBlob.boundUAVBufferNames[uavIndex]);
     }
 	for(FfxmUInt32 rtIndex = 0; rtIndex < outPipeline->rtCount; ++rtIndex)
 	{
 		outPipeline->rtBindings[rtIndex].slotIndex = shaderBlob.boundRTTextures[rtIndex];
-		wcscpy(outPipeline->rtBindings[rtIndex].name, converter.from_bytes(shaderBlob.boundRTTextureNames[rtIndex]).c_str());
+		ffxmWidenAscii(outPipeline->rtBindings[rtIndex].name, shaderBlob.boundRTTextureNames[rtIndex]);
 	}
     for (FfxmUInt32 cbIndex = 0; cbIndex < outPipeline->constCount; ++cbIndex)
     {
         outPipeline->constantBufferBindings[cbIndex].slotIndex = shaderBlob.boundConstantBuffers[cbIndex];
         outPipeline->constantBufferBindings[cbIndex].bindCount = shaderBlob.boundConstantBufferCounts[cbIndex];
         outPipeline->constantBufferBindings[cbIndex].bindSet = shaderBlob.boundConstantBufferSets[cbIndex];
-        wcscpy(outPipeline->constantBufferBindings[cbIndex].name, converter.from_bytes(shaderBlob.boundConstantBufferNames[cbIndex]).c_str());
+        ffxmWidenAscii(outPipeline->constantBufferBindings[cbIndex].name, shaderBlob.boundConstantBufferNames[cbIndex]);
     }
 
     //////////////////////////////////////////////////////////////////////////
