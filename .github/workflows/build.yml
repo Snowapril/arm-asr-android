@@ -23,7 +23,7 @@ jobs:
       matrix:
         abi: [arm64-v8a, armeabi-v7a, x86_64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install NDK r29
         run: |
@@ -50,7 +50,7 @@ jobs:
           cp build/libArm_ASR_api.a out/${{ matrix.abi }}/
           cp build/src/backends/vk/libArm_ASR_backend.a out/${{ matrix.abi }}/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: android-${{ matrix.abi }}
           path: out/${{ matrix.abi }}
@@ -59,7 +59,7 @@ jobs:
     name: Windows x64 (MSVC)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The backend is a static library, so Vulkan headers are enough - there is
       # nothing to link against at this stage.
@@ -87,7 +87,7 @@ jobs:
           find build -name "Arm_ASR_backend.lib" -exec cp {} out/windows-x64/ \;
           ls -la out/windows-x64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-x64
           path: out/windows-x64
@@ -99,7 +99,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Fetch Vulkan headers
         run: git clone --depth 1 --branch ${{ env.VULKAN_HEADERS_TAG }} https://github.com/KhronosGroup/Vulkan-Headers.git
       - name: Configure (compile shaders with FidelityFX_SC.exe)
