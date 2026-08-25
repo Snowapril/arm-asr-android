@@ -17,7 +17,7 @@ sample; see [`samples/common`](../common). Only `main.cpp`, `vk_context.*` and
 
 | | |
 |---|---|
-| Vulkan SDK | 1.3.275 or newer (`VULKAN_SDK` must be set — the installer does this) |
+| Vulkan SDK | 1.3.296 or newer (`VULKAN_SDK` must be set — the installer does this). LunarG no longer serves older SDKs |
 | Compiler | Visual Studio 2022 / MSVC v143, x64 |
 | CMake | 3.22 or newer |
 | GPU | Vulkan 1.2, or Vulkan 1.1 + `VK_KHR_spirv_1_4`, with `VK_KHR_shader_float16_int8` and 16-bit storage |
