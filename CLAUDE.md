@@ -132,6 +132,14 @@ Other things worth knowing:
   `#ifdef _DEBUG` blocks are live for free — no `cppFlags` injection needed.
 - `add_compile_definitions(_UNICODE UNICODE)` in the root `CMakeLists.txt` is
   directory-scoped to the Arm ASR subtree and does not reach a consuming target.
+  A Win32 host must set `UNICODE`/`_UNICODE` itself, or resource-id macros such
+  as `IDC_ARROW` expand to `LPSTR` and will not pass to the `...W` entry points.
+- **`windows.h` macro-maps a lot of bare names onto `...A`/`...W` variants**, and
+  they collide with user types silently. `DeviceCapabilities` — `VkContext`'s
+  capability struct — is one: `winspool.h` maps it to `DeviceCapabilitiesA`, and
+  the resulting errors point at unrelated lines. `samples/windows/src/common.h`
+  `#undef`s it after including `windows.h`. Arm ASR itself is immune because
+  everything is prefixed `Ffxm`/`ffxm`; unprefixed sample types are not.
 
 ## Gotchas
 

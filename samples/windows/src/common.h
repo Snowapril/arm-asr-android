@@ -13,7 +13,25 @@
 #	define VK_USE_PLATFORM_WIN32_KHR 1
 #endif
 
+// Ask for the wide Win32 API. The root CMakeLists sets UNICODE/_UNICODE, but
+// only for the Arm ASR subtree - add_compile_definitions() is directory-scoped
+// and does not reach this target. Without it the resource-id macros such as
+// IDC_ARROW expand to LPSTR and will not pass to the ...W entry points.
+#ifndef UNICODE
+#	define UNICODE 1
+#endif
+#ifndef _UNICODE
+#	define _UNICODE 1
+#endif
+
 #include <windows.h>
+
+// winspool.h, which windows.h pulls in, declares DeviceCapabilitiesA/W for the
+// printing API and macro-maps the bare name onto one of them. That collides
+// with VkContext's DeviceCapabilities struct. This sample uses no printing API,
+// so drop the macro and keep the type name shared with the Android sample.
+#undef DeviceCapabilities
+
 #include <vulkan/vulkan.h>
 
 #include <cstdarg>

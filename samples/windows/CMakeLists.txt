@@ -88,6 +88,10 @@ target_link_libraries(ArmAsrSample PRIVATE
     Arm_ASR_backend
     Vulkan::Vulkan)
 
+# common.h defines these too, so the sample is correct however it is compiled;
+# setting them on the target keeps anything else in it consistent.
+target_compile_definitions(ArmAsrSample PRIVATE UNICODE _UNICODE)
+
 if(MSVC)
     # 4127: conditional expression is constant, 4324: structure padded due to
     # alignas - both are raised by the Vulkan headers, not by sample code.
