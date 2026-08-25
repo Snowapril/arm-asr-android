@@ -24,15 +24,17 @@ Vulkan is the only backend, by design — Arm ASR targets Vulkan mobile apps.
 | `src/backends/vk/ffxm_vk.cpp` | The entire Vulkan backend (~3.6k lines) |
 | `src/backends/vk/shaders/fsr2/{hlsl,glsl}/` | Shader entry points, 8 passes each |
 | `src/backends/shared/blob_accessors/prebuilt_shaders/` | 154 committed SPIR-V blob headers |
+| `samples/common/` | Portable sample code shared by both samples: `scene.*`, `asr_upscaler.*`, the GLSL shaders, `cmake/embed_spirv.cmake` |
 | `samples/android/` | Gradle/NativeActivity Vulkan sample (see below) |
+| `samples/windows/` | Win32 x64/MSVC Vulkan sample (see below) |
 | `tools/` | Shader compiler binaries and the prebuilt-shader generator |
 
 ## Two integration modes
 
 - **Quick**: link `Arm_ASR_api` + `Arm_ASR_backend`, call `ffxmGetScratchMemorySizeVK`
   → `ffxmGetDeviceVK` → `ffxmGetInterfaceVK` → `ffxmFsr2ContextCreate` →
-  `ffxmFsr2ContextDispatch`. `samples/android/app/src/main/cpp/asr_upscaler.cpp`
-  is a complete worked example.
+  `ffxmFsr2ContextDispatch`. `samples/common/asr_upscaler.cpp` is a complete
+  worked example, shared by both samples.
 - **Tight**: implement the 15 function pointers of `FfxmInterface`
   (`include/host/ffxm_interface.h:437`) yourself and build the shaders in your own
   engine pipeline. Only `fpGetDeviceCapabilities`, `fpCreateBackendContext` and
@@ -103,6 +105,33 @@ Other things worth knowing:
   library has exactly 7 undefined `vk*` symbols.
 - `ffxmAssertReport` routes through `__android_log_print` (tag `ArmASR`) when no
   assert callback is installed, so `Arm_ASR_api` links `liblog`.
+
+## Windows specifics
+
+- The samples split platform-bound from portable code: only `main.cpp`,
+  `vk_context.{h,cpp}` and `common.h` are per-platform. `scene.*`,
+  `asr_upscaler.*` and the three GLSL shaders live in `samples/common/` and are
+  compiled into both. A change to the shared half must keep both building.
+- `samples/windows` forces four options on the Arm ASR subdirectory, because the
+  non-Android defaults are wrong for a desktop app: backend **on**, volk
+  **off**, prebuilt shaders **on**, `FFXM_VULKAN_PATH` set to the SDK includes.
+- **volk must stay off.** The tree never calls `volkInitialize`/`volkLoadDevice`
+  and does not vendor volk, so `FFXM_VKLOADER_VOLK=ON` compiles and links but
+  leaves the 51-entry `VKFunctionTable` full of nulls. It fails at dispatch
+  time, not build time.
+- Nothing in the tree links a Vulkan loader off Android. With volk off, the
+  consumer's executable must supply `vulkan-1.lib` for the 7 `vk*` symbols the
+  backend calls directly (see the Android specifics list — the same 7).
+- `include/host/backends/vk/ffxm_vk.h` only defines `VK_USE_PLATFORM_WIN32_KHR`
+  on the volk path. With volk off it includes `<vulkan/vulkan.h>` plainly, so a
+  Win32 host must define the platform macro itself before any vulkan.h include.
+- `VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR` is an Android value; Win32 WSI normally
+  advertises only `OPAQUE`. Win32 may also report `currentExtent` as
+  `0xFFFFFFFF`. Both bite when porting swapchain code from the Android sample.
+- MSVC defines `_DEBUG` in Debug configurations, so unlike Android the
+  `#ifdef _DEBUG` blocks are live for free — no `cppFlags` injection needed.
+- `add_compile_definitions(_UNICODE UNICODE)` in the root `CMakeLists.txt` is
+  directory-scoped to the Arm ASR subtree and does not reach a consuming target.
 
 ## Gotchas
 

@@ -36,6 +36,8 @@ SPDX-License-Identifier: MIT -->
     - [HDR support](#hdr-support)
     - [API Debug Checker](#debug-checker)
 - [Building for Android](#building-for-android)
+- [Building for Windows](#building-for-windows)
+- [Sample applications](#sample-applications)
 - [Extended ffx_shader_compiler](#extended-ffx_shader_compiler)
 - [Generate prebuilt shaders](#generate-prebuilt-shaders)
 - [Targeting OpenGL® ES 3.2](#targeting-opengl-es-32)
@@ -354,9 +356,40 @@ The prebuilt shader blobs are **SPIR-V 1.4 compiled with explicit 16-bit types**
 
 `arm64-v8a` is the supported ABI. `x86_64` builds for emulator and CI coverage, but SwiftShader does not advertise `shaderFloat16`. `armeabi-v7a` compiles but is untested on device.
 
-### Sample application
+## Building for Windows
 
-[`samples/android`](./samples/android) is a Gradle/NativeActivity Vulkan app that renders a procedural scene at reduced resolution and upscales it with Arm ASR. See its [README](./samples/android/README.md) for build and run instructions.
+The Windows defaults differ from Android in three ways that matter, so a host project has to be explicit:
+
+```sh
+cmake -B build -A x64 ^
+  -DFFXM_REMOVE_ARM_ASR_VK_STANDALONE_BACKEND=OFF ^
+  -DFFXM_USE_PREBUILT_SHADERS=ON ^
+  -DFFXM_VKLOADER_VOLK=OFF ^
+  -DFFXM_VULKAN_PATH="%VULKAN_SDK%/Include"
+cmake --build build --config Release
+```
+
+| Override | Why |
+|---|---|
+| `FFXM_REMOVE_ARM_ASR_VK_STANDALONE_BACKEND=OFF` | The backend is compiled away by default off Android, leaving no `Arm_ASR_backend` target |
+| `FFXM_USE_PREBUILT_SHADERS=ON` | Consumes the committed SPIR-V rather than invoking `tools/bin/FidelityFX_SC.exe`, so every platform ships byte-identical blobs. Leave it `OFF` to exercise the shader compiler |
+| `FFXM_VKLOADER_VOLK=OFF` | This tree never calls `volkInitialize`/`volkLoadDevice` and does not vendor volk, so the volk path links but leaves the backend's function table full of nulls at dispatch time. With volk off, the backend resolves entry points through the `vkDeviceProcAddr` you supply in `VkDeviceContext` |
+| `FFXM_VULKAN_PATH` | The backend uses directory-scoped `include_directories()`, so nothing propagates to your target |
+
+`Arm_ASR_backend` is a static library and links no Vulkan loader itself. Your executable must link `vulkan-1.lib`, which resolves the seven `vk*` symbols the backend calls directly rather than through its `VKFunctionTable`: `vkGetDeviceProcAddr`, `vkEnumerateDeviceExtensionProperties`, `vkGetPhysicalDeviceMemoryProperties`, `vkGetPhysicalDeviceProperties2`, `vkGetPhysicalDeviceFeatures2`, `vkCmdSetViewport` and `vkCmdSetScissor`.
+
+Note that MSVC defines `_DEBUG` in Debug configurations, which enables Arm ASR's internal asserts and debug resource naming. Note also that `wchar_t` is 2 bytes on Windows against 4 on Android; it is pervasive in the public ABI, so `ffxmGetScratchMemorySizeVK` returns a substantially smaller number here. It is `sizeof`-based and adapts on its own.
+
+## Sample applications
+
+Both samples render the same procedural scene at reduced resolution and upscale it with Arm ASR. They share `scene.*`, `asr_upscaler.*` and their GLSL shaders through [`samples/common`](./samples/common); only the window/surface setup and entry point are per-platform.
+
+| Sample | What |
+|---|---|
+| [`samples/android`](./samples/android) | Gradle/NativeActivity Vulkan app. See its [README](./samples/android/README.md) |
+| [`samples/windows`](./samples/windows) | Win32 Vulkan app, x64/MSVC. See its [README](./samples/windows/README.md) |
+
+[`samples/common/asr_upscaler.cpp`](./samples/common/asr_upscaler.cpp) is the integration proper and follows the [quick integration](#quick-integration) path end to end.
 
 ## Targeting OpenGL ES 3.2
 
