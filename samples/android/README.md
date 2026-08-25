@@ -56,13 +56,13 @@ and debug resource naming. Asserts report through logcat under the same tag.
 
 ## What the sample demonstrates
 
-`app/src/main/cpp/asr_upscaler.cpp` is the integration proper, and follows the
+`samples/common/asr_upscaler.cpp` is the integration proper, and follows the
 "quick integration" path from the top-level `README.md`:
 `ffxmGetScratchMemorySizeVK` → `ffxmGetDeviceVK` → `ffxmGetInterfaceVK` →
 `ffxmFsr2ContextCreate` → per-frame `ffxmFsr2ContextDispatch` →
 `ffxmFsr2ContextDestroy`.
 
-`app/src/main/shaders/scene.frag` renders a camera flying over an infinite
+`samples/common/shaders/scene.frag` renders a camera flying over an infinite
 checkerboard. Depth and motion vectors are computed analytically rather than
 approximated, so the inputs Arm ASR receives are exact — which is what makes the
 result meaningful rather than merely non-crashing. Motion vectors are emitted in
@@ -71,8 +71,12 @@ derived from the unjittered ray, which is why
 `FFXM_FSR2_ENABLE_MOTION_VECTORS_JITTER_CANCELLATION` is not set.
 
 Sample shaders are compiled to SPIR-V at build time with the NDK's `glslc` and
-embedded as C arrays by `cmake/embed_spirv.cmake`. This is unrelated to Arm ASR's
-own shaders, which come from the committed prebuilt blobs.
+embedded as C arrays by `samples/common/cmake/embed_spirv.cmake`. This is
+unrelated to Arm ASR's own shaders, which come from the committed prebuilt blobs.
+
+The scene, the Arm ASR wrapper and the shaders are shared with the Windows
+sample; see [`samples/common`](../common). Only `main.cpp`, `vk_context.*` and
+`common.h` under `app/src/main/cpp/` are Android-specific.
 
 ## Validation layers
 

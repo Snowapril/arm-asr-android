@@ -489,6 +489,9 @@ void Scene::recordBlit(VkCommandBuffer cmd, VkImageView swapchainView, VkExtent2
     vkCmdEndRenderPass(cmd);
 }
 
+// Idempotent: every handle is reset after destruction, so calling this twice
+// is safe. The Windows sample relies on that - a resize destroys these before
+// rebuilding, and a failed rebuild leaves teardown to run over them again.
 void Scene::destroy(VkContext& ctx)
 {
     VkDevice device = ctx.device();
@@ -505,11 +508,22 @@ void Scene::destroy(VkContext& ctx)
     vkDestroyDescriptorSetLayout(device, blitSetLayout_, nullptr);
     vkDestroySampler(device, sampler_, nullptr);
     vkDestroyRenderPass(device, blitPass_, nullptr);
+    blitPipeline_  = VK_NULL_HANDLE;
+    blitLayout_    = VK_NULL_HANDLE;
+    blitPool_      = VK_NULL_HANDLE;
+    blitSetLayout_ = VK_NULL_HANDLE;
+    blitSet_       = VK_NULL_HANDLE;   // freed with the pool
+    sampler_       = VK_NULL_HANDLE;
+    blitPass_      = VK_NULL_HANDLE;
 
     vkDestroyPipeline(device, scenePipeline_, nullptr);
     vkDestroyPipelineLayout(device, sceneLayout_, nullptr);
     vkDestroyFramebuffer(device, sceneFramebuffer_, nullptr);
     vkDestroyRenderPass(device, scenePass_, nullptr);
+    scenePipeline_    = VK_NULL_HANDLE;
+    sceneLayout_      = VK_NULL_HANDLE;
+    sceneFramebuffer_ = VK_NULL_HANDLE;
+    scenePass_        = VK_NULL_HANDLE;
 
     for (RenderTarget* rt : {&color_, &motion_, &depth_, &output_}) {
         vkDestroyImageView(device, rt->view, nullptr);
